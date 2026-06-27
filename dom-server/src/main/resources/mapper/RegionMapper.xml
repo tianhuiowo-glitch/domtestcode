@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：地域マスタ
+    功能：地域列表查询（含 Redis 缓存）
+-->
+<mapper namespace="com.dorm.server.mapper.RegionMapper">
+
+    <!-- 查询所有未删除地域（按排序升序） -->
+    <select id="selectAll" resultType="com.dorm.server.entity.vo.RegionVO">
+        SELECT id, name, sort_order
+        FROM regions
+        WHERE deleted_at IS NULL
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+</mapper>

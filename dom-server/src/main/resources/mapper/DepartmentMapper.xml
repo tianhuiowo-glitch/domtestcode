@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：部門マスタ
+    功能：部门列表查询（含 Redis 缓存）
+-->
+<mapper namespace="com.dorm.server.mapper.DepartmentMapper">
+
+    <!-- 查询所有未删除部门（按排序升序） -->
+    <select id="selectAll" resultType="com.dorm.server.entity.vo.DepartmentVO">
+        SELECT id, name, sort_order
+        FROM departments
+        WHERE deleted_at IS NULL
+        ORDER BY sort_order ASC, id ASC
+    </select>
+
+    <!-- ページネーション検索（キーワード任意） -->
+    <select id="selectPage" resultType="com.dorm.server.entity.vo.DepartmentVO">
+        SELECT id, name, sort_order
+        FROM departments
+        WHERE deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+        ORDER BY sort_order ASC, id ASC
+        LIMIT #{pageSize} OFFSET #{offset}
+    </select>
+
+    <!-- ページネーション総件数カウント -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM departments
+        WHERE deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND name LIKE CONCAT('%', #{keyword}, '%')
+        </if>
+    </select>
+
+    <!-- 部門新規登録（自動採番 id を keyProperty で回収） -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO departments (name, sort_order, created_at, updated_at)
+        VALUES (#{name}, #{sortOrder}, NOW(), NOW())
+    </insert>
+
+    <!-- 部門更新（論理削除済みは対象外） -->
+    <update id="updateById">
+        UPDATE departments
+        SET name       = #{name},
+            sort_order = #{sortOrder},
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 部門論理削除（deleted_at をセット） -->
+    <update id="softDeleteById">
+        UPDATE departments
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+</mapper>

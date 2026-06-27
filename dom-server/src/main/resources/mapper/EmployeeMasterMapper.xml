@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    モジュール：社員マスタ管理
+    機能：社員マスタ検索・詳細取得
+-->
+<mapper namespace="com.dorm.server.mapper.EmployeeMasterMapper">
+
+    <!-- 通用列定義（禁止 select *） -->
+    <sql id="employeeMasterVoColumns">
+        em.employee_id,
+        em.name,
+        em.name_kana,
+        em.gender,
+        em.department_id,
+        d.name AS department_name
+    </sql>
+
+    <!-- 氏名・社員番号キーワードで曖昧検索（コンボボックス用、最大20件、在職者のみ） -->
+    <select id="searchByKeyword" resultType="com.dorm.server.entity.vo.EmployeeMasterVO">
+        SELECT
+            <include refid="employeeMasterVoColumns"/>
+        FROM employee_master em
+        LEFT JOIN departments d ON d.id = em.department_id AND d.deleted_at IS NULL
+        WHERE em.deleted_at IS NULL
+          AND em.status = 1
+        <if test="keyword != null and keyword != ''">
+            AND (em.name LIKE CONCAT('%', #{keyword}, '%')
+              OR em.employee_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY em.employee_id ASC
+        LIMIT 20
+    </select>
+
+    <!-- 社員番号で1件取得（VO） -->
+    <select id="selectVoByEmployeeId" resultType="com.dorm.server.entity.vo.EmployeeMasterVO">
+        SELECT
+            <include refid="employeeMasterVoColumns"/>
+        FROM employee_master em
+        LEFT JOIN departments d ON d.id = em.department_id AND d.deleted_at IS NULL
+        WHERE em.employee_id = #{employeeId}
+          AND em.deleted_at IS NULL
+    </select>
+
+    <!-- 社員番号で1件取得（実体） -->
+    <select id="selectByEmployeeId" resultType="com.dorm.server.entity.EmployeeMaster">
+        SELECT
+            em.id,
+            em.employee_id,
+            em.name,
+            em.name_kana,
+            em.gender,
+            em.department_id,
+            em.status,
+            em.created_at,
+            em.updated_at,
+            em.deleted_at
+        FROM employee_master em
+        WHERE em.employee_id = #{employeeId}
+          AND em.deleted_at IS NULL
+    </select>
+
+</mapper>

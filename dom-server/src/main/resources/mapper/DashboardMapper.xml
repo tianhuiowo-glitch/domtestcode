@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<mapper namespace="com.dorm.server.mapper.DashboardMapper">
+
+    <!-- 現在の在籍者数（退室日が未設定、または退室日が今日以降の在籍者） -->
+    <select id="countActiveResidents" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM residence_histories
+        WHERE deleted_at IS NULL
+          AND check_in_date &lt;= CURDATE()
+          AND (check_out_date IS NULL OR check_out_date &gt;= CURDATE())
+    </select>
+
+    <!-- 入居予定者数（入居日がまだ来ていない予約入居） -->
+    <select id="countPendingResidents" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM residence_histories
+        WHERE deleted_at IS NULL
+          AND check_in_date &gt; CURDATE()
+          AND (check_out_date IS NULL OR check_out_date &gt;= CURDATE())
+    </select>
+
+    <!-- 空室数：今日時点で在籍中の記録がない部屋 -->
+    <select id="countVacantRooms" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM rooms r
+        WHERE r.deleted_at IS NULL
+          AND NOT EXISTS (
+              SELECT 1
+              FROM residence_histories rh
+              WHERE rh.room_id = r.id
+                AND rh.deleted_at IS NULL
+                AND rh.check_in_date &lt;= CURDATE()
+                AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+          )
+    </select>
+
+    <!-- 退寮予定 N 日以内の件数（planned_checkout_date または確定 check_out_date が対象） -->
+    <select id="countWithdrawalAlerts" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM residence_histories
+        WHERE deleted_at IS NULL
+          AND check_in_date &lt;= CURDATE()
+          AND (
+            (check_out_date IS NULL
+             AND planned_checkout_date IS NOT NULL
+             AND planned_checkout_date &gt;= CURDATE()
+             AND planned_checkout_date &lt;= DATE_ADD(CURDATE(), INTERVAL #{days} DAY))
+            OR
+            (check_out_date IS NOT NULL
+             AND check_out_date &gt;= CURDATE()
+             AND check_out_date &lt;= DATE_ADD(CURDATE(), INTERVAL #{days} DAY))
+          )
+    </select>
+
+    <!-- 長期滞在警告件数：入居中かつ入居日から minDays 日以上経過している在住者数 -->
+    <select id="countLongTermAlerts" resultType="java.lang.Integer">
+        SELECT COUNT(*)
+        FROM residence_histories
+        WHERE deleted_at IS NULL
+          AND check_in_date &lt;= CURDATE()
+          AND (check_out_date IS NULL OR check_out_date &gt;= CURDATE())
+          AND DATEDIFF(CURDATE(), check_in_date) &gt;= #{minDays}
+    </select>
+
+    <!-- 重複エラー件数：当月内に在籍期間が重なるペアが存在する部屋の数 -->
+    <select id="countDuplicateRooms" resultType="java.lang.Integer">
+        SELECT COUNT(DISTINCT a.room_id)
+        FROM residence_histories a
+        JOIN residence_histories b
+          ON a.room_id = b.room_id
+         AND a.id &lt; b.id
+         AND b.deleted_at IS NULL
+        WHERE a.deleted_at IS NULL
+          AND a.check_in_date &lt;= LAST_DAY(CURDATE())
+          AND (a.check_out_date IS NULL OR a.check_out_date &gt;= DATE_FORMAT(CURDATE(), '%Y-%m-01'))
+          AND b.check_in_date &lt;= LAST_DAY(CURDATE())
+          AND (b.check_out_date IS NULL OR b.check_out_date &gt;= DATE_FORMAT(CURDATE(), '%Y-%m-01'))
+          AND a.check_in_date &lt;= IFNULL(b.check_out_date, '9999-12-31')
+          AND IFNULL(a.check_out_date, '9999-12-31') &gt;= b.check_in_date
+    </select>
+
+</mapper>

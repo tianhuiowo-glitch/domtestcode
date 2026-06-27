@@ -1,0 +1,170 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：宿舍管理
+    功能：宿舍 CRUD 及统计查询
+-->
+<mapper namespace="com.dorm.server.mapper.DormitoryMapper">
+
+    <!-- 通用列定义（禁止 select *） -->
+    <sql id="dormitoryColumns">
+        d.id, d.region_id, r.name AS region_name, d.name, d.dormitory_type,
+        d.address, d.daily_rate, d.sort_order, d.version, d.created_at, d.updated_at
+    </sql>
+
+    <!-- 分页查询宿舍列表（含地域名称及房间统计） -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.DormitoryVO">
+        SELECT
+            <include refid="dormitoryColumns"/>,
+            COUNT(DISTINCT rm.id) AS total_rooms,
+            COUNT(DISTINCT CASE
+                WHEN rh.id IS NOT NULL
+                 AND rh.check_in_date &lt;= CURDATE()
+                 AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+                 AND rh.deleted_at IS NULL
+                THEN rm.id END) AS occupied_rooms
+        FROM dormitories d
+        LEFT JOIN regions r ON r.id = d.region_id AND r.deleted_at IS NULL
+        LEFT JOIN rooms rm ON rm.dormitory_id = d.id AND rm.deleted_at IS NULL
+        LEFT JOIN residence_histories rh ON rh.room_id = rm.id AND rh.deleted_at IS NULL
+        WHERE d.deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.address LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="regionId != null">
+            AND d.region_id = #{regionId}
+        </if>
+        GROUP BY d.id, d.region_id, r.name, d.name, d.dormitory_type,
+                 d.address, d.daily_rate, d.sort_order, d.version, d.created_at, d.updated_at
+        ORDER BY d.sort_order ASC, d.id ASC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计分页总数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM dormitories d
+        WHERE d.deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND (d.name LIKE CONCAT('%', #{keyword}, '%') OR d.address LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="regionId != null">
+            AND d.region_id = #{regionId}
+        </if>
+    </select>
+
+    <!-- 根据ID查询宿舍 VO（含地域名称） -->
+    <select id="selectVoById" resultType="com.dorm.server.entity.vo.DormitoryVO">
+        SELECT
+            <include refid="dormitoryColumns"/>,
+            COUNT(DISTINCT rm.id) AS total_rooms,
+            COUNT(DISTINCT CASE
+                WHEN rh.id IS NOT NULL
+                 AND rh.check_in_date &lt;= CURDATE()
+                 AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+                 AND rh.deleted_at IS NULL
+                THEN rm.id END) AS occupied_rooms
+        FROM dormitories d
+        LEFT JOIN regions r ON r.id = d.region_id AND r.deleted_at IS NULL
+        LEFT JOIN rooms rm ON rm.dormitory_id = d.id AND rm.deleted_at IS NULL
+        LEFT JOIN residence_histories rh ON rh.room_id = rm.id AND rh.deleted_at IS NULL
+        WHERE d.id = #{id} AND d.deleted_at IS NULL
+        GROUP BY d.id, d.region_id, r.name, d.name, d.dormitory_type,
+                 d.address, d.daily_rate, d.sort_order, d.version, d.created_at, d.updated_at
+    </select>
+
+    <!-- 根据ID查询实体 -->
+    <select id="selectById" resultType="com.dorm.server.entity.Dormitory">
+        SELECT d.id, d.region_id, d.name, d.dormitory_type, d.address,
+               d.daily_rate, d.sort_order, d.version, d.created_at, d.updated_at, d.deleted_at
+        FROM dormitories d
+        WHERE d.id = #{id} AND d.deleted_at IS NULL
+    </select>
+
+    <!-- 新增宿舍 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO dormitories (region_id, name, dormitory_type, address, daily_rate, sort_order, version, created_at, updated_at)
+        VALUES (#{regionId}, #{name}, #{dormitoryType}, #{address}, #{dailyRate}, #{sortOrder}, #{version}, NOW(), NOW())
+    </insert>
+
+    <!-- 更新宿舍（含乐观锁版本校验） -->
+    <update id="updateWithVersion">
+        UPDATE dormitories
+        SET region_id      = #{regionId},
+            name           = #{name},
+            dormitory_type = #{dormitoryType},
+            address        = #{address},
+            daily_rate     = #{dailyRate},
+            sort_order     = #{sortOrder},
+            version        = version + 1,
+            updated_at     = NOW()
+        WHERE id = #{id}
+          AND version = #{version}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 软删除宿舍 -->
+    <update id="softDeleteById">
+        UPDATE dormitories
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 查询宿舍下未删除房间数量 -->
+    <select id="countRoomsByDormitoryId" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM rooms
+        WHERE dormitory_id = #{dormitoryId} AND deleted_at IS NULL
+    </select>
+
+    <!-- 查询所有未删除宿舍（用于空房汇总） -->
+    <select id="selectAllForVacancy" resultType="com.dorm.server.entity.vo.DormitoryVO">
+        SELECT d.id, d.region_id, r.name AS region_name, d.name, d.dormitory_type,
+               d.address, d.daily_rate, d.sort_order, d.version, d.created_at, d.updated_at
+        FROM dormitories d
+        LEFT JOIN regions r ON r.id = d.region_id AND r.deleted_at IS NULL
+        WHERE d.deleted_at IS NULL
+        ORDER BY d.sort_order ASC, d.id ASC
+    </select>
+
+    <!-- 房間IDから宿舎タイプを取得（性別制約チェック用） -->
+    <select id="selectDormitoryTypeByRoomId" resultType="java.lang.String">
+        SELECT d.dormitory_type
+        FROM rooms rm
+        JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        WHERE rm.id = #{roomId}
+          AND rm.deleted_at IS NULL
+    </select>
+
+    <!-- 指定宿舎IDの在住者数をカウント（タイプ変更前の空室チェック用） -->
+    <select id="countActiveResidentsByDormitoryId" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM residence_histories rh
+        JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        WHERE rm.dormitory_id = #{dormitoryId}
+          AND rh.check_out_date IS NULL
+          AND rh.deleted_at IS NULL
+    </select>
+
+    <!-- 宿舎タイプを更新 -->
+    <update id="updateDormitoryType">
+        UPDATE dormitories
+        SET dormitory_type = #{dormitoryType},
+            updated_at     = NOW()
+        WHERE id = #{id}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 指定宿舎IDの配下全房間を一括ソフトデリート（宿舎削除時の連鎖削除用） -->
+    <update id="softDeleteRoomsByDormitoryId">
+        UPDATE rooms
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE dormitory_id = #{dormitoryId}
+          AND deleted_at IS NULL
+    </update>
+
+</mapper>

@@ -1,0 +1,172 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：房间管理
+    功能：房间 CRUD、空闲房间查询、在住人数统计
+-->
+<mapper namespace="com.dorm.server.mapper.RoomMapper">
+
+    <!-- 分页查询房间列表（含宿舍名称和当前入住人数） -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.RoomVO">
+        SELECT
+            rm.id, rm.dormitory_id, d.name AS dormitory_name, rm.name,
+            rm.capacity, rm.version, rm.created_at, rm.updated_at,
+            COUNT(rh.id) AS current_occupancy
+        FROM rooms rm
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN residence_histories rh ON rh.room_id = rm.id
+            AND rh.check_in_date &lt;= CURDATE()
+            AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+            AND rh.deleted_at IS NULL
+        WHERE rm.deleted_at IS NULL
+        <if test="dormitoryId != null">
+            AND rm.dormitory_id = #{dormitoryId}
+        </if>
+        GROUP BY rm.id, rm.dormitory_id, d.name, rm.name, rm.capacity, rm.version, rm.created_at, rm.updated_at
+        ORDER BY rm.dormitory_id ASC, rm.name ASC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计分页总数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM rooms rm
+        WHERE rm.deleted_at IS NULL
+        <if test="dormitoryId != null">
+            AND rm.dormitory_id = #{dormitoryId}
+        </if>
+    </select>
+
+    <!-- 根据ID查询房间 VO -->
+    <select id="selectVoById" resultType="com.dorm.server.entity.vo.RoomVO">
+        SELECT
+            rm.id, rm.dormitory_id, d.name AS dormitory_name, rm.name,
+            rm.capacity, rm.version, rm.created_at, rm.updated_at,
+            COUNT(rh.id) AS current_occupancy
+        FROM rooms rm
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN residence_histories rh ON rh.room_id = rm.id
+            AND rh.check_in_date &lt;= CURDATE()
+            AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+            AND rh.deleted_at IS NULL
+        WHERE rm.id = #{id} AND rm.deleted_at IS NULL
+        GROUP BY rm.id, rm.dormitory_id, d.name, rm.name, rm.capacity, rm.version, rm.created_at, rm.updated_at
+    </select>
+
+    <!-- 根据ID查询实体 -->
+    <select id="selectById" resultType="com.dorm.server.entity.Room">
+        SELECT rm.id, rm.dormitory_id, rm.name, rm.capacity, rm.version,
+               rm.created_at, rm.updated_at, rm.deleted_at
+        FROM rooms rm
+        WHERE rm.id = #{id} AND rm.deleted_at IS NULL
+    </select>
+
+    <!-- 查询指定宿舍的空闲房间（指定日期时点无有效入住记录） -->
+    <select id="selectVacantRooms" resultType="com.dorm.server.entity.vo.RoomVO">
+        SELECT
+            rm.id, rm.dormitory_id, d.name AS dormitory_name, rm.name,
+            rm.capacity, rm.version, rm.created_at, rm.updated_at,
+            0 AS current_occupancy
+        FROM rooms rm
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        WHERE rm.deleted_at IS NULL
+          AND rm.dormitory_id = #{dormitoryId}
+          AND rm.id NOT IN (
+              SELECT DISTINCT rh.room_id
+              FROM residence_histories rh
+              WHERE rh.deleted_at IS NULL
+                AND rh.check_in_date &lt;= #{date}
+                AND (rh.check_out_date IS NULL OR rh.check_out_date &gt; #{date})
+          )
+        ORDER BY rm.name ASC
+    </select>
+
+    <!-- 新增房间 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO rooms (dormitory_id, name, capacity, version, created_at, updated_at)
+        VALUES (#{dormitoryId}, #{name}, #{capacity}, #{version}, NOW(), NOW())
+    </insert>
+
+    <!-- 更新房间（含乐观锁） -->
+    <update id="updateWithVersion">
+        UPDATE rooms
+        SET dormitory_id = #{dormitoryId},
+            name         = #{name},
+            capacity     = #{capacity},
+            version      = version + 1,
+            updated_at   = NOW()
+        WHERE id = #{id}
+          AND version = #{version}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- カレンダー用：全部屋を寮・地域情報付きで取得（空室含む） -->
+    <select id="selectAllRoomsForCalendar" resultType="java.util.Map">
+        SELECT
+            rm.id           AS room_id,
+            rm.name         AS room_name,
+            dom.id          AS dormitory_id,
+            dom.name        AS dormitory_name
+        FROM rooms rm
+        JOIN dormitories dom ON dom.id = rm.dormitory_id AND dom.deleted_at IS NULL
+        LEFT JOIN regions reg ON reg.id = dom.region_id AND reg.deleted_at IS NULL
+        WHERE rm.deleted_at IS NULL
+        <if test="regionId != null">
+            AND reg.id = #{regionId}
+        </if>
+        ORDER BY dom.id ASC, rm.id ASC
+    </select>
+
+    <!-- 软删除房间 -->
+    <update id="softDeleteById">
+        UPDATE rooms
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 查询房间当前在住人数 -->
+    <select id="countActiveResidents" resultType="java.lang.Integer">
+        SELECT COUNT(1)
+        FROM residence_histories
+        WHERE room_id = #{roomId}
+          AND check_out_date IS NULL
+          AND deleted_at IS NULL
+    </select>
+
+    <!-- 查询宿舍下所有房间 -->
+    <select id="selectByDormitoryId" resultType="com.dorm.server.entity.Room">
+        SELECT id, dormitory_id, name, capacity, version, created_at, updated_at, deleted_at
+        FROM rooms
+        WHERE dormitory_id = #{dormitoryId} AND deleted_at IS NULL
+        ORDER BY name ASC
+    </select>
+
+    <!-- 查询宿舍下所有房间 VO（含当前入住人数），用于空房汇总统计，替代 selectPageList + Integer.MAX_VALUE -->
+    <select id="selectVoListByDormitoryId" resultType="com.dorm.server.entity.vo.RoomVO">
+        SELECT rm.id,
+               rm.dormitory_id,
+               d.name            AS dormitory_name,
+               rm.name,
+               rm.capacity,
+               rm.version,
+               rm.created_at,
+               rm.updated_at,
+               COUNT(CASE
+                   WHEN rh.id IS NOT NULL
+                    AND rh.check_in_date &lt;= CURDATE()
+                    AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+                    AND rh.deleted_at IS NULL
+                   THEN 1 END) AS current_occupancy
+        FROM rooms rm
+                 LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+                 LEFT JOIN residence_histories rh ON rh.room_id = rm.id AND rh.deleted_at IS NULL
+        WHERE rm.dormitory_id = #{dormitoryId}
+          AND rm.deleted_at IS NULL
+        GROUP BY rm.id, rm.dormitory_id, d.name, rm.name, rm.capacity, rm.version, rm.created_at, rm.updated_at
+        ORDER BY rm.id ASC
+    </select>
+
+</mapper>

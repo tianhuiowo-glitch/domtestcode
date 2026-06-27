@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：设备库存管理
+    功能：库存查询和入库
+-->
+<mapper namespace="com.dorm.server.mapper.EquipmentStorageMapper">
+
+    <!-- 通用列定义 -->
+    <sql id="storageColumns">
+        es.id, es.equipment_id, es.equipment_name, es.category,
+        es.serial_number, es.storage_location, es.stored_at, es.remarks, es.created_at
+    </sql>
+
+    <!-- 查询所有库存列表 -->
+    <select id="selectAll" resultType="com.dorm.server.entity.vo.StorageItemVO">
+        SELECT <include refid="storageColumns"/>
+        FROM equipment_storage es
+        WHERE es.deleted_at IS NULL
+        ORDER BY es.stored_at DESC
+    </select>
+
+    <!-- 根据ID查询库存 VO -->
+    <select id="selectVoById" resultType="com.dorm.server.entity.vo.StorageItemVO">
+        SELECT <include refid="storageColumns"/>
+        FROM equipment_storage es
+        WHERE es.id = #{id} AND es.deleted_at IS NULL
+    </select>
+
+    <!-- 新增库存记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO equipment_storage
+            (equipment_id, equipment_name, category, serial_number,
+             storage_location, stored_at, remarks, created_at, updated_at)
+        VALUES
+            (#{equipmentId}, #{equipmentName}, #{category}, #{serialNumber},
+             #{storageLocation}, #{storedAt}, #{remarks}, NOW(), NOW())
+    </insert>
+
+</mapper>

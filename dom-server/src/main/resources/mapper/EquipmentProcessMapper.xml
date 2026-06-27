@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：设备处理记录管理
+    功能：损坏/丢失处理记录 CRUD
+-->
+<mapper namespace="com.dorm.server.mapper.EquipmentProcessMapper">
+
+    <!-- 通用列定义 -->
+    <sql id="processColumns">
+        ep.id, ep.equipment_id, e.name AS equipment_name,
+        ep.checkin_id, ep.process_type, ep.description,
+        ep.cost, ep.status, ep.completed_at, ep.created_at
+    </sql>
+
+    <!-- 根据入居记录ID查询处理记录 -->
+    <select id="selectByCheckinId" resultType="com.dorm.server.entity.vo.EquipmentProcessVO">
+        SELECT <include refid="processColumns"/>
+        FROM equipment_processes ep
+        LEFT JOIN equipment e ON e.id = ep.equipment_id AND e.deleted_at IS NULL
+        WHERE ep.checkin_id = #{checkinId} AND ep.deleted_at IS NULL
+        ORDER BY ep.created_at DESC
+    </select>
+
+    <!-- 根据ID查询处理记录 VO -->
+    <select id="selectVoById" resultType="com.dorm.server.entity.vo.EquipmentProcessVO">
+        SELECT <include refid="processColumns"/>
+        FROM equipment_processes ep
+        LEFT JOIN equipment e ON e.id = ep.equipment_id AND e.deleted_at IS NULL
+        WHERE ep.id = #{id} AND ep.deleted_at IS NULL
+    </select>
+
+    <!-- 根据ID查询实体 -->
+    <select id="selectById" resultType="com.dorm.server.entity.EquipmentProcess">
+        SELECT id, equipment_id, checkin_id, process_type, description,
+               cost, status, completed_at, created_at, updated_at, deleted_at
+        FROM equipment_processes
+        WHERE id = #{id} AND deleted_at IS NULL
+    </select>
+
+    <!-- 新增处理记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO equipment_processes
+            (equipment_id, checkin_id, process_type, description, cost, status, created_at, updated_at)
+        VALUES
+            (#{equipmentId}, #{checkinId}, #{processType}, #{description}, #{cost}, #{status}, NOW(), NOW())
+    </insert>
+
+    <!-- 完成处理（更新状态为 completed） -->
+    <update id="completeProcess">
+        UPDATE equipment_processes
+        SET status       = 'completed',
+            completed_at = NOW(),
+            updated_at   = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+</mapper>

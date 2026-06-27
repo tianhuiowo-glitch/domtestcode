@@ -1,0 +1,97 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：设备管理
+    功能：设备查询、状态更新
+-->
+<mapper namespace="com.dorm.server.mapper.EquipmentMapper">
+
+    <!-- 通用列定义 -->
+    <sql id="equipmentColumns">
+        e.id, e.name, e.category, e.serial_number, e.status,
+        e.dormitory_id, d.name AS dormitory_name, d.deleted_at AS dormitory_deleted_at,
+        e.room_id, rm.name AS room_name,
+        e.checkin_id, e.attributes, e.version, e.created_at, e.updated_at
+    </sql>
+
+    <!-- 分页查询设备列表 -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.EquipmentVO">
+        SELECT <include refid="equipmentColumns"/>
+        FROM equipment e
+        LEFT JOIN dormitories d ON d.id = e.dormitory_id
+        LEFT JOIN rooms rm ON rm.id = e.room_id AND rm.deleted_at IS NULL
+        WHERE e.deleted_at IS NULL
+        <if test="dormitoryId != null">
+            AND e.dormitory_id = #{dormitoryId}
+        </if>
+        <if test="status != null and status != ''">
+            AND e.status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (e.name LIKE CONCAT('%', #{keyword}, '%') OR e.serial_number LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY e.created_at DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计分页总数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM equipment e
+        WHERE e.deleted_at IS NULL
+        <if test="dormitoryId != null">
+            AND e.dormitory_id = #{dormitoryId}
+        </if>
+        <if test="status != null and status != ''">
+            AND e.status = #{status}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (e.name LIKE CONCAT('%', #{keyword}, '%') OR e.serial_number LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <!-- 根据ID查询设备 VO -->
+    <select id="selectVoById" resultType="com.dorm.server.entity.vo.EquipmentVO">
+        SELECT <include refid="equipmentColumns"/>
+        FROM equipment e
+        LEFT JOIN dormitories d ON d.id = e.dormitory_id
+        LEFT JOIN rooms rm ON rm.id = e.room_id AND rm.deleted_at IS NULL
+        WHERE e.id = #{id} AND e.deleted_at IS NULL
+    </select>
+
+    <!-- 根据ID查询实体 -->
+    <select id="selectById" resultType="com.dorm.server.entity.Equipment">
+        SELECT id, name, category, serial_number, status, dormitory_id, checkin_id,
+               room_id, attributes, version, created_at, updated_at, deleted_at
+        FROM equipment
+        WHERE id = #{id} AND deleted_at IS NULL
+    </select>
+
+    <!-- 更新设备状态 -->
+    <update id="updateStatus">
+        UPDATE equipment
+        SET status     = #{status},
+            updated_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 备品転寮（dormitory_id を更新、room_id をクリア） -->
+    <update id="transferDormitory">
+        UPDATE equipment
+        SET dormitory_id = #{targetDormitoryId},
+            room_id      = NULL,
+            updated_at   = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 备品廃棄（ソフトデリート） -->
+    <update id="softDeleteById">
+        UPDATE equipment
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+</mapper>

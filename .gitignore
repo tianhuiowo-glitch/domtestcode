@@ -1,0 +1,16 @@
+# Claude Code internal files - do not push
+.claude/
+memory/
+
+# Frontend
+dom-dev/node_modules/
+dom-dev/dist/
+dom-dev/.vite/
+
+# Backend
+dom-server/target/
+dom-server/*.class
+
+# OS
+.DS_Store
+Thumbs.db

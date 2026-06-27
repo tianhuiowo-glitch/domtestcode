@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：CSV エクスポート
+    功能：入居履歴・寮費一覧 CSV 出力用データ取得
+-->
+<mapper namespace="com.dorm.server.mapper.ExportMapper">
+
+    <!-- 入居履歴エクスポート -->
+    <select id="selectResidenceExportData" resultType="java.util.LinkedHashMap">
+        SELECT
+            rh.employee_id                                                            AS `社員番号`,
+            rh.resident_name                                                          AS `氏名`,
+            CASE rh.gender WHEN 'male' THEN '男性' WHEN 'female' THEN '女性' ELSE '' END AS `性別`,
+            COALESCE(d.name, '')                                                      AS `寮名称`,
+            COALESCE(rm.name, '')                                                     AS `部屋名`,
+            DATE_FORMAT(rh.check_in_date, '%Y/%m/%d')                               AS `入寮日`,
+            COALESCE(DATE_FORMAT(rh.check_out_date, '%Y/%m/%d'), '')                AS `退寮日`,
+            COALESCE(DATE_FORMAT(rh.planned_checkout_date, '%Y/%m/%d'), '')         AS `予定退寮日`,
+            COALESCE(rh.remarks, '')                                                  AS `備考`
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN regions r ON r.id = d.region_id AND r.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+        <if test="regionId != null">
+            AND r.id = #{regionId}
+        </if>
+        ORDER BY rh.check_in_date DESC, rh.employee_id ASC
+    </select>
+
+    <!-- 寮費一覧エクスポート -->
+    <select id="selectFeeExportData" resultType="java.util.LinkedHashMap">
+        SELECT
+            f.employee_id                                                             AS `社員番号`,
+            f.employee_name                                                           AS `氏名`,
+            COALESCE(f.dormitory_name, '')                                           AS `寮名称`,
+            COALESCE(f.room_name, '')                                                AS `部屋名`,
+            DATE_FORMAT(f.period_start, '%Y/%m')                                    AS `対象年月`,
+            f.stay_days                                                               AS `在寮日数`,
+            f.daily_rate                                                              AS `日額`,
+            f.total_amount                                                            AS `寮費`,
+            CASE f.status WHEN 'confirmed' THEN '確認済' ELSE '未確認' END           AS `状態`
+        FROM fees f
+        LEFT JOIN dormitories d ON d.id = f.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN regions r ON r.id = d.region_id AND r.deleted_at IS NULL
+        WHERE f.deleted_at IS NULL
+        <if test="year != null">
+            AND YEAR(f.period_start) = #{year}
+        </if>
+        <if test="month != null">
+            AND MONTH(f.period_start) = #{month}
+        </if>
+        <if test="regionId != null">
+            AND r.id = #{regionId}
+        </if>
+        ORDER BY f.period_start DESC, f.employee_id ASC
+    </select>
+
+</mapper>

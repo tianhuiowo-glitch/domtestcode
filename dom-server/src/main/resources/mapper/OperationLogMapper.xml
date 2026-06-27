@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：操作日志
+    功能：日志分页查询、异步写入
+-->
+<mapper namespace="com.dorm.server.mapper.OperationLogMapper">
+
+    <!-- 通用列定义 -->
+    <sql id="logColumns">
+        ol.id, ol.username, ol.action, ol.resource, ol.resource_id,
+        ol.detail, ol.ip_address, ol.status, ol.operated_at
+    </sql>
+
+    <!-- 分页查询日志 -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.LogVO">
+        SELECT <include refid="logColumns"/>
+        FROM operation_logs ol
+        WHERE 1 = 1
+        <if test="username != null and username != ''">
+            AND ol.username LIKE CONCAT('%', #{username}, '%')
+        </if>
+        <if test="action != null and action != ''">
+            AND ol.action = #{action}
+        </if>
+        <if test="resource != null and resource != ''">
+            AND ol.resource = #{resource}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND ol.operated_at >= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND ol.operated_at &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+        ORDER BY ol.operated_at DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计分页总数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM operation_logs ol
+        WHERE 1 = 1
+        <if test="username != null and username != ''">
+            AND ol.username LIKE CONCAT('%', #{username}, '%')
+        </if>
+        <if test="action != null and action != ''">
+            AND ol.action = #{action}
+        </if>
+        <if test="resource != null and resource != ''">
+            AND ol.resource = #{resource}
+        </if>
+        <if test="startDate != null and startDate != ''">
+            AND ol.operated_at >= #{startDate}
+        </if>
+        <if test="endDate != null and endDate != ''">
+            AND ol.operated_at &lt;= CONCAT(#{endDate}, ' 23:59:59')
+        </if>
+    </select>
+
+    <!-- 新增操作日志 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO operation_logs
+            (username, action, resource, resource_id, detail, ip_address, status, operated_at)
+        VALUES
+            (#{username}, #{action}, #{resource}, #{resourceId}, #{detail}, #{ipAddress}, #{status}, #{operatedAt})
+    </insert>
+
+</mapper>

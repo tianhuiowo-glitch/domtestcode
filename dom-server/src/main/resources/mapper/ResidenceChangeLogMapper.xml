@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：入居履歴変更ログ管理
+    功能：入居履歴の変更操作（INSERT/UPDATE/DELETE）ログの記録・分页查询
+-->
+<mapper namespace="com.dorm.server.mapper.ResidenceChangeLogMapper">
+
+    <!-- 新增変更ログ -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO residence_change_logs
+            (residence_history_id, operation_type, operated_by, operated_at,
+             resident_name, dormitory_name, room_name)
+        VALUES
+            (#{residenceHistoryId}, #{operationType}, #{operatedBy}, #{operatedAt},
+             #{residentName}, #{dormitoryName}, #{roomName})
+    </insert>
+
+    <!-- 分页查询変更ログリスト -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.ResidenceChangeLogVO">
+        SELECT id, residence_history_id, operation_type, operated_by, operated_at,
+               resident_name, dormitory_name, room_name
+        FROM residence_change_logs
+        WHERE 1 = 1
+        <if test="operationType != null and operationType != ''">
+            AND operation_type = #{operationType}
+        </if>
+        <if test="from != null and from != ''">
+            AND operated_at &gt;= #{from}
+        </if>
+        <if test="to != null and to != ''">
+            AND operated_at &lt;= #{to}
+        </if>
+        ORDER BY operated_at DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 統計分页総数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM residence_change_logs
+        WHERE 1 = 1
+        <if test="operationType != null and operationType != ''">
+            AND operation_type = #{operationType}
+        </if>
+        <if test="from != null and from != ''">
+            AND operated_at &gt;= #{from}
+        </if>
+        <if test="to != null and to != ''">
+            AND operated_at &lt;= #{to}
+        </if>
+    </select>
+
+</mapper>

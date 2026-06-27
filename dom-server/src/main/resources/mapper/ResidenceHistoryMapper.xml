@@ -1,0 +1,347 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE mapper PUBLIC "-//mybatis.org//DTD Mapper 3.0//EN"
+        "http://mybatis.org/dtd/mybatis-3-mapper.dtd">
+
+<!--
+    模块：入居履歴管理
+    功能：入住/退住 CRUD、预警查询、日历事件统计
+-->
+<mapper namespace="com.dorm.server.mapper.ResidenceHistoryMapper">
+
+    <!-- 通用列定义 -->
+    <sql id="checkinSelectColumns">
+        rh.id, rh.employee_id, rh.resident_name AS employee_name, rh.gender,
+        rh.department_id, dp.name AS department_name,
+        d.id AS dormitory_id, d.name AS dormitory_name,
+        rh.room_id, rm.name AS room_number,
+        rh.check_in_date AS checkin_date,
+        rh.check_out_date AS checkout_date,
+        rh.planned_checkout_date,
+        DATEDIFF(IFNULL(rh.check_out_date, CURDATE()), rh.check_in_date) AS stay_days,
+        CASE WHEN rh.check_out_date IS NULL THEN 'active' ELSE 'checked_out' END AS status,
+        rh.is_responsible,
+        rh.remarks AS remark,
+        rh.version, rh.created_at, rh.updated_at
+    </sql>
+
+    <!-- 分页查询入住记录 -->
+    <select id="selectPageList" resultType="com.dorm.server.entity.vo.CheckinVO">
+        SELECT <include refid="checkinSelectColumns"/>
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND (rh.resident_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR rh.employee_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status == 'pending'">
+            AND rh.check_in_date &gt; CURDATE()
+        </if>
+        <if test="status != null and status == 'active'">
+            AND rh.check_in_date &lt;= CURDATE()
+            AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+        </if>
+        <if test="status != null and status == 'checked_out'">
+            AND rh.check_out_date IS NOT NULL
+            AND rh.check_out_date &lt; CURDATE()
+        </if>
+        <if test="dormitoryId != null">
+            AND d.id = #{dormitoryId}
+        </if>
+        ORDER BY rh.created_at DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计分页总数 -->
+    <select id="selectPageCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+        <if test="keyword != null and keyword != ''">
+            AND (rh.resident_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR rh.employee_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        <if test="status != null and status == 'pending'">
+            AND rh.check_in_date &gt; CURDATE()
+        </if>
+        <if test="status != null and status == 'active'">
+            AND rh.check_in_date &lt;= CURDATE()
+            AND (rh.check_out_date IS NULL OR rh.check_out_date &gt;= CURDATE())
+        </if>
+        <if test="status != null and status == 'checked_out'">
+            AND rh.check_out_date IS NOT NULL
+            AND rh.check_out_date &lt; CURDATE()
+        </if>
+        <if test="dormitoryId != null">
+            AND d.id = #{dormitoryId}
+        </if>
+    </select>
+
+    <!-- 根据ID查询入住 VO -->
+    <select id="selectCheckinVoById" resultType="com.dorm.server.entity.vo.CheckinVO">
+        SELECT <include refid="checkinSelectColumns"/>
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.id = #{id} AND rh.deleted_at IS NULL
+    </select>
+
+    <!-- 根据ID查询实体 -->
+    <select id="selectById" resultType="com.dorm.server.entity.ResidenceHistory">
+        SELECT id, employee_id, gender, room_id, department_id, resident_name,
+               check_in_date, check_out_date, planned_checkout_date,
+               is_responsible, remarks, version, created_at, updated_at, deleted_at
+        FROM residence_histories
+        WHERE id = #{id} AND deleted_at IS NULL
+    </select>
+
+    <!-- 根据ID查询 ResidenceVO -->
+    <select id="selectResidenceVoById" resultType="com.dorm.server.entity.vo.ResidenceVO">
+        SELECT rh.id, rh.employee_id, rh.gender, rh.resident_name,
+               rh.department_id, dp.name AS department_name,
+               rh.room_id, rm.name AS room_name,
+               d.id AS dormitory_id, d.name AS dormitory_name,
+               rh.check_in_date, rh.check_out_date, rh.planned_checkout_date,
+               rh.is_responsible, rh.remarks, rh.version, rh.created_at, rh.updated_at
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.id = #{id} AND rh.deleted_at IS NULL
+    </select>
+
+    <!-- 新增入居记录 -->
+    <insert id="insert" useGeneratedKeys="true" keyProperty="id">
+        INSERT INTO residence_histories
+            (employee_id, gender, room_id, department_id, resident_name,
+             check_in_date, check_out_date, planned_checkout_date, is_responsible, remarks, version, created_at, updated_at)
+        VALUES
+            (#{employeeId}, #{gender}, #{roomId}, #{departmentId}, #{residentName},
+             #{checkInDate}, #{checkOutDate}, #{plannedCheckoutDate}, #{isResponsible}, #{remarks}, #{version}, NOW(), NOW())
+    </insert>
+
+    <!-- 更新入居记录（含乐观锁） -->
+    <update id="updateWithVersion">
+        UPDATE residence_histories
+        SET employee_id           = #{employeeId},
+            gender                = #{gender},
+            room_id               = #{roomId},
+            department_id         = #{departmentId},
+            resident_name         = #{residentName},
+            check_in_date         = #{checkInDate},
+            check_out_date        = #{checkOutDate},
+            planned_checkout_date = #{plannedCheckoutDate},
+            is_responsible        = #{isResponsible},
+            remarks               = #{remarks},
+            version               = version + 1,
+            updated_at            = NOW()
+        WHERE id = #{id}
+          AND version = #{version}
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 办理退住 -->
+    <update id="checkout">
+        UPDATE residence_histories
+        SET check_out_date = #{checkoutDate},
+            remarks        = CASE WHEN #{remark} IS NOT NULL THEN #{remark} ELSE remarks END,
+            version        = version + 1,
+            updated_at     = NOW()
+        WHERE id = #{id}
+          AND version = #{version}
+          AND check_out_date IS NULL
+          AND deleted_at IS NULL
+    </update>
+
+    <!-- 软删除 -->
+    <update id="softDeleteById">
+        UPDATE residence_histories
+        SET deleted_at = NOW(),
+            updated_at = NOW()
+        WHERE id = #{id} AND deleted_at IS NULL
+    </update>
+
+    <!-- 根据社員番号查询最新一条入居记录（用于员工查询） -->
+    <select id="selectEmployeeLookupByEmployeeId" resultType="com.dorm.server.entity.vo.EmployeeLookupVO">
+        SELECT rh.employee_id, rh.resident_name AS employee_name, rh.gender,
+               rh.department_id, dp.name AS department_name
+        FROM residence_histories rh
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.employee_id = #{employeeId} AND rh.deleted_at IS NULL
+        ORDER BY rh.created_at DESC
+        LIMIT 0, 1
+    </select>
+
+    <!-- 查询长期入住预警列表（入住超过指定天数，仍在住） -->
+    <select id="selectLongTermAlerts" resultType="com.dorm.server.entity.vo.LongTermAlertVO">
+        SELECT rh.id, rh.employee_id, rh.resident_name AS employee_name,
+               d.id AS dormitory_id, d.name AS dormitory_name,
+               rh.room_id, rm.name AS room_number,
+               rh.check_in_date AS checkin_date,
+               DATEDIFF(CURDATE(), rh.check_in_date) AS stay_days,
+               dp.name AS department_name
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NULL
+          AND DATEDIFF(CURDATE(), rh.check_in_date) >= #{minDays}
+        <if test="maxDays != null">
+            AND DATEDIFF(CURDATE(), rh.check_in_date) &lt; #{maxDays}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (rh.resident_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR rh.employee_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+        ORDER BY stay_days DESC
+        LIMIT #{offset}, #{pageSize}
+    </select>
+
+    <!-- 统计长期入住预警总数 -->
+    <select id="selectLongTermAlertCount" resultType="java.lang.Long">
+        SELECT COUNT(1)
+        FROM residence_histories rh
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NULL
+          AND DATEDIFF(CURDATE(), rh.check_in_date) >= #{minDays}
+        <if test="maxDays != null">
+            AND DATEDIFF(CURDATE(), rh.check_in_date) &lt; #{maxDays}
+        </if>
+        <if test="keyword != null and keyword != ''">
+            AND (rh.resident_name LIKE CONCAT('%', #{keyword}, '%')
+                 OR rh.employee_id LIKE CONCAT('%', #{keyword}, '%'))
+        </if>
+    </select>
+
+    <!-- 查询即将退住预警（check_out_date 或 planned_checkout_date 在今天到N天后之间） -->
+    <select id="selectWithdrawalAlerts" resultType="com.dorm.server.entity.vo.WithdrawalAlertVO">
+        SELECT rh.id, rh.employee_id, rh.resident_name AS employee_name,
+               d.name AS dormitory_name, rm.name AS room_number,
+               rh.check_in_date AS checkin_date,
+               IFNULL(rh.check_out_date, rh.planned_checkout_date) AS planned_checkout_date,
+               DATEDIFF(IFNULL(rh.check_out_date, rh.planned_checkout_date), CURDATE()) AS days_until_checkout,
+               dp.name AS department_name
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN departments dp ON dp.id = rh.department_id AND dp.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_in_date &lt;= CURDATE()
+          AND (
+            (rh.check_out_date IS NULL
+             AND rh.planned_checkout_date IS NOT NULL
+             AND rh.planned_checkout_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL #{days} DAY))
+            OR
+            (rh.check_out_date IS NOT NULL
+             AND rh.check_out_date &gt;= CURDATE()
+             AND rh.check_out_date &lt;= DATE_ADD(CURDATE(), INTERVAL #{days} DAY))
+          )
+        ORDER BY IFNULL(rh.check_out_date, rh.planned_checkout_date) ASC
+    </select>
+
+    <!-- 统计各预警类型数量 -->
+    <select id="selectAlertCounts" resultType="java.util.Map">
+        SELECT 'warning' AS type,
+               COUNT(1) AS cnt
+        FROM residence_histories rh
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NULL
+          AND DATEDIFF(CURDATE(), rh.check_in_date) BETWEEN #{warningDays} AND #{criticalDays} - 1
+        UNION ALL
+        SELECT 'critical' AS type,
+               COUNT(1) AS cnt
+        FROM residence_histories rh
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NULL
+          AND DATEDIFF(CURDATE(), rh.check_in_date) >= #{criticalDays}
+        UNION ALL
+        SELECT 'withdrawal' AS type,
+               COUNT(1) AS cnt
+        FROM residence_histories rh
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NULL
+          AND rh.planned_checkout_date IS NOT NULL
+          AND rh.planned_checkout_date BETWEEN CURDATE() AND DATE_ADD(CURDATE(), INTERVAL #{withdrawDays} DAY)
+    </select>
+
+    <!-- カレンダーグリッド用：指定年月に在籍している入居記録を取得 -->
+    <select id="selectCalendarResidents" resultType="java.util.Map">
+        SELECT
+            rh.id,
+            rh.resident_name,
+            rh.is_responsible,
+            rh.check_in_date,
+            rh.check_out_date,
+            rh.planned_checkout_date,
+            rh.remarks,
+            d.name  AS department_name,
+            r.id    AS room_id,
+            r.name  AS room_name,
+            dom.id  AS dormitory_id,
+            dom.name AS dormitory_name
+        FROM residence_histories rh
+        JOIN rooms r ON r.id = rh.room_id AND r.deleted_at IS NULL
+        JOIN dormitories dom ON dom.id = r.dormitory_id AND dom.deleted_at IS NULL
+        LEFT JOIN regions reg ON reg.id = dom.region_id AND reg.deleted_at IS NULL
+        LEFT JOIN departments d ON d.id = rh.department_id AND d.deleted_at IS NULL
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_in_date &lt;= LAST_DAY(STR_TO_DATE(CONCAT(#{year}, '-', LPAD(#{month}, 2, '0'), '-01'), '%Y-%m-%d'))
+          AND (rh.check_out_date IS NULL
+               OR rh.check_out_date &gt;= STR_TO_DATE(CONCAT(#{year}, '-', LPAD(#{month}, 2, '0'), '-01'), '%Y-%m-%d'))
+        <if test="regionId != null">
+            AND reg.id = #{regionId}
+        </if>
+        ORDER BY dom.id ASC, r.id ASC, rh.check_in_date ASC
+    </select>
+
+    <!-- 派遣社員番号の最大値を取得（プレフィックス別自動採番用、未削除のみ） -->
+    <select id="selectMaxDispatchId" resultType="java.lang.String">
+        SELECT MAX(rh.employee_id)
+        FROM residence_histories rh
+        WHERE rh.deleted_at IS NULL
+          AND rh.employee_id LIKE CONCAT(#{prefix}, '%')
+    </select>
+
+    <!-- 查询日历事件（按日期统计入住/退住数量） -->
+    <select id="selectCalendarEvents" resultType="java.util.Map">
+        SELECT
+            DATE_FORMAT(rh.check_in_date, '%Y-%m-%d') AS date,
+            'checkin' AS event_type,
+            COUNT(1) AS cnt
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN regions r ON r.id = d.region_id
+        WHERE rh.deleted_at IS NULL
+          AND YEAR(rh.check_in_date) = #{year}
+          AND MONTH(rh.check_in_date) = #{month}
+          <if test="regionId != null">
+              AND r.id = #{regionId}
+          </if>
+        GROUP BY DATE_FORMAT(rh.check_in_date, '%Y-%m-%d')
+        UNION ALL
+        SELECT
+            DATE_FORMAT(rh.check_out_date, '%Y-%m-%d') AS date,
+            'checkout' AS event_type,
+            COUNT(1) AS cnt
+        FROM residence_histories rh
+        LEFT JOIN rooms rm ON rm.id = rh.room_id AND rm.deleted_at IS NULL
+        LEFT JOIN dormitories d ON d.id = rm.dormitory_id AND d.deleted_at IS NULL
+        LEFT JOIN regions r ON r.id = d.region_id
+        WHERE rh.deleted_at IS NULL
+          AND rh.check_out_date IS NOT NULL
+          AND YEAR(rh.check_out_date) = #{year}
+          AND MONTH(rh.check_out_date) = #{month}
+          <if test="regionId != null">
+              AND r.id = #{regionId}
+          </if>
+        GROUP BY DATE_FORMAT(rh.check_out_date, '%Y-%m-%d')
+    </select>
+
+</mapper>
